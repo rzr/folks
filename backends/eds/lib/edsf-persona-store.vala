@@ -888,6 +888,9 @@ public class Edsf.PersonaStore : Folks.PersonaStore
                     }
                 }
 
+              /* Add extended_info field */
+              prop_set.add ((!) Folks.PersonaStore.detail_key (PersonaDetail.EXTENDED_INFO));
+
               /* Convert the property set to an array. We can't use .to_array()
                * here because it fails to null-terminate the array. Sigh. */
               this._always_writeable_properties = new string[prop_set.size];
@@ -1595,6 +1598,51 @@ public class Edsf.PersonaStore : Folks.PersonaStore
       this._set_contact_attributes_string (persona.contact, emails,
           "EMAIL", E.ContactField.EMAIL);
       yield this._commit_modified_property (persona, "email-addresses");
+    }
+
+  internal ExtendedFieldDetails? _get_extended_field (Edsf.Persona persona, string name)
+    {
+      unowned VCardAttribute? attr = persona.contact.get_attribute (name);
+      if (attr != null)
+        {
+          ExtendedFieldDetails details = new ExtendedFieldDetails (attr.get_value (), null);
+
+          foreach (unowned E.VCardAttributeParam param in attr.get_params ())
+            {
+              string param_name = param.get_name ();
+              foreach (unowned string param_value in param.get_values ())
+                {
+                  details.add_parameter (param_name, param_value);
+                }
+            }
+
+           return details;
+        }
+
+      return null;
+    }
+
+  internal async void _change_extended_field (Edsf.Persona persona,
+      string name, ExtendedFieldDetails details) throws PropertyError
+    {
+      var vcard = (E.VCard) persona.contact;
+      unowned E.VCardAttribute? prev_attr = vcard.get_attribute (name);
+
+      if (prev_attr != null)
+        persona.contact.remove_attribute (prev_attr);
+
+      E.VCardAttribute new_attr = new E.VCardAttribute ("", name);
+      new_attr.add_value (details.value);
+
+      persona.contact.add_attribute (new_attr);
+
+      try
+        {
+          yield ((!) this._addressbook).modify_contact (persona.contact, null);
+        }
+      catch (GLib.Error e)
+        {
+        }
     }
 
   internal async void _set_phones (Edsf.Persona persona,
